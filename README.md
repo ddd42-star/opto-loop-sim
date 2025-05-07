@@ -4,7 +4,7 @@ Microscope simulation for optical feedback loops.
 
 ## Demo
 
-![Demo Video](docs/assets/opto_loop_demo_compressed.mp4)
+https://github.com/user-attachments/assets/04042e2d-6312-4a3b-9980-cc1642ddf8a5
 
 ## Code Overview
 
