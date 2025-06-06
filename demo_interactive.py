@@ -14,11 +14,12 @@ FADE_STEP    = 50
 
 def main() -> None:
     pygame.init()
-    screen = pygame.display.set_mode((sim.WIDTH, sim.HEIGHT))
+    microscope = sim.MicroscopeSim(overlay_mask=True)  # Use the new class
+    screen = pygame.display.set_mode((microscope.width, microscope.height))
     pygame.display.set_caption("Microscope simulation demo")
     clock = pygame.time.Clock()
 
-    mask_surf = pygame.Surface((sim.WIDTH, sim.HEIGHT), pygame.SRCALPHA)
+    mask_surf = pygame.Surface((microscope.width, microscope.height), pygame.SRCALPHA)
     brush = pygame.Surface((2 * BRUSH_RADIUS, 2 * BRUSH_RADIUS), pygame.SRCALPHA)
     pygame.draw.circle(brush, (50, 140, 255, BRUSH_ALPHA), (BRUSH_RADIUS, BRUSH_RADIUS), BRUSH_RADIUS)
 
@@ -37,11 +38,12 @@ def main() -> None:
                 mask_surf.blit(brush, (e.pos[0] - BRUSH_RADIUS, e.pos[1] - BRUSH_RADIUS))
 
         # mask → boolean array
-#        mask_bool = pygame.surfarray.array_alpha(mask_surf) > 0
         mask_bool = (pygame.surfarray.array_alpha(mask_surf).T > 0)
+        print(mask_bool.shape, mask_bool.dtype)
+        print(mask_bool)
 
         # simulation step
-        frame = sim.get_frame(mask_bool)
+        frame = microscope.get_frame(mask_bool)  # Use the instance method
         screen.blit(frame, (0, 0))
         screen.blit(mask_surf, (0, 0))
 

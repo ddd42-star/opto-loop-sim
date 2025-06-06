@@ -1,11 +1,11 @@
 """
 microscope_sim.py
-Optogenetic cell‑motility simulator (vertex‑based stimulation).
+Optogenetic cell-motility simulator (vertex-based stimulation).
 
 Rule change
 -----------
-• A stimulation mask is a 2‑D boolean array (HEIGHT×WIDTH).
-• For each cell, every vertex that overlaps a True pixel protrudes
+- A stimulation mask is a 2-D boolean array (HEIGHTxWIDTH).
+- For each cell, every vertex that overlaps a True pixel protrudes
   directly outward (radius += PROTRUSION_GAIN · base_r).
 
 Public API
@@ -15,70 +15,43 @@ get_frame(mask: np.ndarray) -> pygame.Surface
 from __future__ import annotations
 import itertools, math, random, time
 from typing import List, Tuple
-
 import numpy as np
 import pygame
 from PIL import Image, ImageEnhance, ImageFilter
 
 # --------------------------------------------------------------------------- #
-# Parameters                                                                  #
-# --------------------------------------------------------------------------- #
-WIDTH, HEIGHT   = 800, 800
-N_CELLS         = 20
-VERTICES        = 24
-BASE_RADIUS     = 40
-FRICTION        = 8.0
-BROWNIAN_D      = 30
-CURVATURE_RELAX = 0.12
-RADIAL_RELAX    = 0.02
-PROTRUSION_GAIN = 0.05          # Δr as fraction of base_r
-IMPULSE         = 10        # px s‑1 kick toward stimulated side
-RUFFLE_STD      = 0.06
-
-# faux‑microscope filter constants
-_CONTRAST   = 0.55
-_BLUR_RAD   = 3
-_NOISE_STD  = 9
-_BRIGHTNESS = 0.78
-
-RNG = random.Random(0)
-
-# --------------------------------------------------------------------------- #
 # Helpers                                                                     #
 # --------------------------------------------------------------------------- #
-def wrap(pos: Tuple[float, float]) -> Tuple[float, float]:
-    return (pos[0] % WIDTH, pos[1] % HEIGHT)
+def wrap(pos: Tuple[float, float], width: int, height: int) -> Tuple[float, float]:
+    return (pos[0] % width, pos[1] % height)
 
 def polygon_area(pts) -> float:
     pts = np.asarray(pts)
     x, y = pts[:, 0], pts[:, 1]
     return 0.5 * (x @ np.roll(y, -1) - y @ np.roll(x, -1))
 
-def microscope_filter(surface: pygame.Surface) -> pygame.Surface:
-    raw = pygame.image.tostring(surface, "RGB")
-    pil = Image.frombytes("RGB", (WIDTH, HEIGHT), raw)
-    pil = pil.convert("L")
-    pil = ImageEnhance.Contrast(pil).enhance(_CONTRAST)
-    pil = pil.filter(ImageFilter.GaussianBlur(_BLUR_RAD))
-    arr = np.asarray(pil, dtype=np.float32)
-    arr += np.random.normal(0, _NOISE_STD, arr.shape)
-    arr = np.clip(arr, 0, 255).astype(np.uint8)
-    pil = Image.fromarray(arr, mode="L")
-    pil = ImageEnhance.Brightness(pil).enhance(_BRIGHTNESS)
-    rgb = pil.convert("RGB")
-    return pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
-
 # --------------------------------------------------------------------------- #
 # Cell                                                                        #
 # --------------------------------------------------------------------------- #
 class Cell:
-    def __init__(self):
-        self.center = np.array([RNG.uniform(0, WIDTH), RNG.uniform(0, HEIGHT)], float)
-        self.base_r = BASE_RADIUS * (0.85 + 0.3 * RNG.random())
-        self.r = np.full(VERTICES, self.base_r)
-        self.angles = np.linspace(0, 2 * math.pi, VERTICES, endpoint=False)
+    def __init__(self, width, height, base_radius, vertices, friction, brownian_d, curvature_relax, radial_relax, protrusion_gain, impulse, ruffle_std, rng):
+        self.width = width
+        self.height = height
+        self.base_r = base_radius * (0.85 + 0.3 * rng.random())
+        self.r = np.full(vertices, self.base_r)
+        self.angles = np.linspace(0, 2 * math.pi, vertices, endpoint=False)
         self.area0 = math.pi * self.base_r ** 2
         self.vel = np.zeros(2)
+        self.vertices = vertices
+        self.friction = friction
+        self.brownian_d = brownian_d
+        self.curvature_relax = curvature_relax
+        self.radial_relax = radial_relax
+        self.protrusion_gain = protrusion_gain
+        self.impulse = impulse
+        self.ruffle_std = ruffle_std
+        self.rng = rng
+        self.center = np.array([rng.uniform(0, width), rng.uniform(0, height)], float)
 
     # ---------------- stimulation ----------------
     def stimulate(self, mask: np.ndarray):
@@ -92,7 +65,7 @@ class Cell:
         vy = self.center[1] + np.sin(self.angles) * self.r
 
         # keep only vertices inside the screen
-        inside = (vx >= 0) & (vx < WIDTH) & (vy >= 0) & (vy < HEIGHT)
+        inside = (vx >= 0) & (vx < self.width) & (vy >= 0) & (vy < self.height)
         if not inside.any():
             return
 
@@ -106,7 +79,7 @@ class Cell:
         # enlarge only the hit vertices
         idx = np.nonzero(inside)[0][hit]   # indices in self.r that need protrusion
         # 1) protrude stimulated vertices outward
-        self.r[idx] += PROTRUSION_GAIN * self.base_r
+        self.r[idx] += self.protrusion_gain * self.base_r
         self.r = np.clip(self.r, 0.4 * self.base_r, 2.2 * self.base_r)
         self._conserve_area()
 
@@ -118,22 +91,22 @@ class Cell:
         vec = tgt - self.center
         n = np.linalg.norm(vec)
         if n:
-            self.vel += (vec / n) * IMPULSE
+            self.vel += (vec / n) * self.impulse
 
     # ---------------- physics update -------------
     def update(self, dt: float):
-        amp = RNG.normalvariate(0, math.sqrt(2 * BROWNIAN_D * dt))
-        ang = RNG.uniform(0, 2 * math.pi)
+        amp = self.rng.normalvariate(0, math.sqrt(2 * self.brownian_d * dt))
+        ang = self.rng.uniform(0, 2 * math.pi)
         self.vel += amp * np.array([math.cos(ang), math.sin(ang)])
         self.center += self.vel * dt
-        self.center = np.array(wrap(self.center))
-        self.vel *= max(0.0, 1.0 - FRICTION * dt)
+        self.center = np.array(wrap(self.center, self.width, self.height))
+        self.vel *= max(0.0, 1.0 - self.friction * dt)
 
-        self.r += RNG.normalvariate(0, RUFFLE_STD * self.base_r) * np.cos(
-            RNG.randint(1, 3) * self.angles + RNG.uniform(0, 2 * math.pi)
+        self.r += self.rng.normalvariate(0, self.ruffle_std * self.base_r) * np.cos(
+            self.rng.randint(1, 3) * self.angles + self.rng.uniform(0, 2 * math.pi)
         )
         lap = np.roll(self.r, -1) + np.roll(self.r, 1) - 2 * self.r
-        self.r += CURVATURE_RELAX * lap + RADIAL_RELAX * (self.base_r - self.r)
+        self.r += self.curvature_relax * lap + self.radial_relax * (self.base_r - self.r)
         self.r = np.clip(self.r, 0.4 * self.base_r, 2.2 * self.base_r)
         self._conserve_area()
 
@@ -141,8 +114,8 @@ class Cell:
     def collide(self, other):
         dvx = other.center[0] - self.center[0]
         dvy = other.center[1] - self.center[1]
-        dvx -= WIDTH * round(dvx / WIDTH)
-        dvy -= HEIGHT * round(dvy / HEIGHT)
+        dvx -= self.width * round(dvx / self.width)
+        dvy -= self.height * round(dvy / self.height)
         dvec = np.array([dvx, dvy])
         dist = np.linalg.norm(dvec)
         if dist == 0:
@@ -154,8 +127,8 @@ class Cell:
         shift = 0.5 * (overlap + 0.5) * n
         self.center -= shift
         other.center += shift
-        self.center = np.array(wrap(self.center))
-        other.center = np.array(wrap(other.center))
+        self.center = np.array(wrap(self.center, self.width, self.height))
+        other.center = np.array(wrap(other.center, other.width, other.height))
         self.vel[:] = 0
         other.vel[:] = 0
 
@@ -163,10 +136,10 @@ class Cell:
     def draw(self, surf: pygame.Surface):
         rel = self._rel_pts()
         layers = 6
-        for ox in (-WIDTH, 0, WIDTH):
-            for oy in (-HEIGHT, 0, HEIGHT):
+        for ox in (-self.width, 0, self.width):
+            for oy in (-self.height, 0, self.height):
                 pts = [(x + ox + self.center[0], y + oy + self.center[1]) for x, y in rel]
-                if not any(0 <= px <= WIDTH and 0 <= py <= HEIGHT for px, py in pts):
+                if not any(0 <= px <= self.width and 0 <= py <= self.height for px, py in pts):
                     continue
                 for i in range(layers, 0, -1):
                     s = i / layers
@@ -201,39 +174,115 @@ class Cell:
 # Module‑level state                                                          #
 # --------------------------------------------------------------------------- #
 pygame.init()
-_cells: List[Cell] = [Cell() for _ in range(N_CELLS)]
-_last_time = time.perf_counter()
-_cell_layer = pygame.Surface((WIDTH, HEIGHT))
 
-# --------------------------------------------------------------------------- #
-# Public API                                                                  #
-# --------------------------------------------------------------------------- #
-def get_frame(mask: np.ndarray) -> pygame.Surface:
-    """
-    Advance the simulation one time‑step and return the faux‑microscope image.
-    *mask* must be a boolean or {0,1} array of shape (HEIGHT, WIDTH).
-    """
-    global _last_time
-    now = time.perf_counter()
-    dt = now - _last_time
-    _last_time = now
+class MicroscopeSim:
+    def __init__(
+        self,
+        width=512,
+        height=512,
+        nb_cells=30,
+        vertices=24,
+        base_radius=20,
+        friction=3.0,
+        brownian_d=80,
+        curvature_relax=0.06,
+        radial_relax=0.02,
+        protrusion_gain=0.05,
+        impulse=10,
+        ruffle_std=0.06,
+        contrast=0.55,
+        blur_rad=3,
+        noise_std=10,
+        brightness=0.78,
+        overlay_mask: bool = False,
+        rng_seed=0
+    ):
+        self.width = width
+        self.height = height
+        self.nb_cells = nb_cells
+        self.vertices = vertices
+        self.base_radius = base_radius
+        self.friction = friction
+        self.brownian_d = brownian_d
+        self.curvature_relax = curvature_relax
+        self.radial_relax = radial_relax
+        self.protrusion_gain = protrusion_gain
+        self.impulse = impulse
+        self.ruffle_std = ruffle_std
+        self.contrast = contrast
+        self.blur_rad = blur_rad
+        self.noise_std = noise_std
+        self.brightness = brightness
+        self.overlay_mask = overlay_mask
+        self.rng = random.Random(rng_seed)
+        self._cells: List[Cell] = [
+            Cell(
+                self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
+                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng
+            ) for _ in range(self.nb_cells)
+        ]
+        self._last_time = time.perf_counter()
+        self._cell_layer = pygame.Surface((self.width, self.height))
 
-    if mask.dtype != np.bool_:
-        mask = mask.astype(bool)
+    def reset(self):
+        self._cells = [
+            Cell(
+                self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
+                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng
+            ) for _ in range(self.nb_cells)
+        ]
+        self._last_time = time.perf_counter()
+        self._cell_layer = pygame.Surface((self.width, self.height))
 
-    # stimulate cells whose vertices overlap the mask
-    if mask.any():
-        for c in _cells:
-            c.stimulate(mask)
+    def get_frame(self, mask: np.ndarray) -> pygame.Surface:
+        now = time.perf_counter()
+        dt = now - self._last_time
+        self._last_time = now
 
-    # physics
-    for c in _cells:
-        c.update(dt)
-    for a, b in itertools.combinations(_cells, 2):
-        a.collide(b)
+        if mask.dtype != np.bool_:
+            mask = mask.astype(bool)
 
-    # render
-    _cell_layer.fill((235, 235, 235))
-    for c in _cells:
-        c.draw(_cell_layer)
-    return microscope_filter(_cell_layer.copy())
+        if mask.any():
+            for c in self._cells:
+                c.stimulate(mask)
+
+        for c in self._cells:
+            c.update(dt)
+        for a, b in itertools.combinations(self._cells, 2):
+            a.collide(b)
+
+        self._cell_layer.fill((235, 235, 235))
+        for c in self._cells:
+            c.draw(self._cell_layer)
+
+        frame = self._microscope_filter(self._cell_layer.copy())
+
+        if self.overlay_mask:
+            # Overlay the mask as a blue semi-transparent layer, after filtering
+            mask_surf = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+            blue_rgb = (50, 140, 255)
+            alpha = 128  # semi-transparent
+            mask_surf.fill((0, 0, 0, 0))
+            arr_rgb = pygame.surfarray.pixels3d(mask_surf)
+            arr_alpha = pygame.surfarray.pixels_alpha(mask_surf)
+            # Flip mask axes to match pygame's (width, height) order
+            mask_T = mask.T
+            arr_rgb[mask_T] = blue_rgb
+            arr_alpha[mask_T] = alpha
+            del arr_rgb, arr_alpha  # unlock the surface
+            frame.blit(mask_surf, (0, 0), special_flags=pygame.BLEND_RGBA_ADD)
+        return frame
+
+    def _microscope_filter(self, surface: pygame.Surface) -> pygame.Surface:
+        raw = pygame.image.tostring(surface, "RGB")
+        pil = Image.frombytes("RGB", (self.width, self.height), raw)
+        pil = pil.convert("L")
+        pil = ImageEnhance.Contrast(pil).enhance(self.contrast)
+        pil = pil.filter(ImageFilter.GaussianBlur(self.blur_rad))
+        arr = np.asarray(pil, dtype=np.float32)
+        arr += np.random.normal(0, self.noise_std, arr.shape)
+        arr = np.clip(arr, 0, 255).astype(np.uint8)
+        pil = Image.fromarray(arr, mode="L")
+        pil = ImageEnhance.Brightness(pil).enhance(self.brightness)
+        rgb = pil.convert("RGB")
+        return pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
