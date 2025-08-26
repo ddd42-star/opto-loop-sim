@@ -3,3 +3,6 @@ __pycache__/**
 docs/.DS_Store
 
 .idea
+
+static
+*.ttf

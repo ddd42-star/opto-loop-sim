@@ -52,6 +52,8 @@ class Cell:
         self.ruffle_std = ruffle_std
         self.rng = rng
         self.center = np.array([rng.uniform(0, width), rng.uniform(0, height)], float)
+        self.nucleus_fluorescence = 0.0
+        self.membrane_fluorescence = np.zeros(self.vertices)
 
     # ---------------- stimulation ----------------
     def stimulate(self, mask: np.ndarray):
@@ -92,6 +94,18 @@ class Cell:
         n = np.linalg.norm(vec)
         if n:
             self.vel += (vec / n) * self.impulse
+
+        # update membrane fluorescence: stimulated vertices get max intensity
+        self.membrane_fluorescence[:] = 0
+        if hit.any():
+            self.membrane_fluorescence[:] = 1.0
+
+        # update nucleus fluorescence if center is stimulated
+        cx, cy = int(self.center[0]), int(self.center[1])
+        if 0 <= cx < self.width and 0 <= cy < self.height and mask[cy, cx]:
+            self.nucleus_fluorescence = min(self.nucleus_fluorescence + 0.1, 1.0)
+        else:
+            self.nucleus_fluorescence = min(self.nucleus_fluorescence - 0.05, 0.0)
 
     # ---------------- physics update -------------
     def update(self, dt: float):
@@ -153,6 +167,21 @@ class Cell:
                     ]
                     pygame.draw.polygon(surf, (shade, shade, 255), scaled)
                 pygame.draw.polygon(surf, (0, 0, 0), pts, 1)
+
+                # colors: red(255,100,100) blue(60,60,150), green(50,255,50)
+                # Draw membrane fluorescence glow on stimulate vertices
+                for i, (x,y) in enumerate(pts):
+                    intensity = self.membrane_fluorescence[i]
+                    if intensity > 0:
+                        glow_color = (int(255 * intensity), int(100 * intensity), int(100 * intensity))
+                        pygame.draw.circle(surf, glow_color, (int(x), int(y)), 3)
+
+                # Draw nucleus fluorescence glow
+                if self.nucleus_fluorescence > 0:
+                    glow_radius = int(0.6 * self.base_r)
+                    glow_color = (50, int(255* self.nucleus_fluorescence), 50)
+                    pygame.draw.circle(surf, glow_color, (int(self.center[0] + ox), int(self.center[1] + oy)), glow_radius)        
+
                 pygame.draw.circle(
                     surf,
                     (60, 60, 150),
@@ -286,3 +315,21 @@ class MicroscopeSim:
         pil = ImageEnhance.Brightness(pil).enhance(self.brightness)
         rgb = pil.convert("RGB")
         return pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
+
+    def get_frame_random_walk(self) -> pygame.Surface:
+    now = time.perf_counter()
+    dt = now - self._last_time
+    self._last_time = now
+
+    # Update cells without stimulation
+    for c in self._cells:
+        c.update(dt)
+    for a, b in itertools.combinations(self._cells, 2):
+        a.collide(b)
+
+    self._cell_layer.fill((235, 235, 235))
+    for c in self._cells:
+        c.draw(self._cell_layer)
+
+    frame = self._microscope_filter(self._cell_layer.copy())
+    return frame

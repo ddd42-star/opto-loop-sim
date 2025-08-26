@@ -4,11 +4,11 @@ from typing import Callable
 from pymmcore_slm_sim import SimSLMDevice
 import numpy as np
 from numpy.typing import DTypeLike
-from pymmcore_plus.experimental.unicore import Camera, UniMMCore
+from pymmcore_plus.experimental.unicore import CameraDevice, UniMMCore
 from microscope_sim import MicroscopeSim
 import pygame
 
-class SimCameraDevice(Camera):
+class SimCameraDevice(CameraDevice):
     """
     pymmcore_camera_sim.py
 
