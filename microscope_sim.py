@@ -317,19 +317,19 @@ class MicroscopeSim:
         return pygame.image.fromstring(rgb.tobytes(), rgb.size, "RGB")
 
     def get_frame_random_walk(self) -> pygame.Surface:
-    now = time.perf_counter()
-    dt = now - self._last_time
-    self._last_time = now
+        now = time.perf_counter()
+        dt = now - self._last_time
+        self._last_time = now
 
-    # Update cells without stimulation
-    for c in self._cells:
-        c.update(dt)
-    for a, b in itertools.combinations(self._cells, 2):
-        a.collide(b)
+        # Update cells without stimulation
+        for c in self._cells:
+            c.update(dt)
+        for a, b in itertools.combinations(self._cells, 2):
+            a.collide(b)
 
-    self._cell_layer.fill((235, 235, 235))
-    for c in self._cells:
-        c.draw(self._cell_layer)
+        self._cell_layer.fill((235, 235, 235))
+        for c in self._cells:
+            c.draw(self._cell_layer)
 
-    frame = self._microscope_filter(self._cell_layer.copy())
-    return frame
+        frame = self._microscope_filter(self._cell_layer.copy())
+        return frame

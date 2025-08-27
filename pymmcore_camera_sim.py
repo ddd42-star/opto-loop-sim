@@ -47,10 +47,12 @@ class SimCameraDevice(CameraDevice):
 
     def start_sequence(
         self,
-        n: int,
+        n: int | None,
         get_buffer: Callable[[Sequence[int], DTypeLike], np.ndarray],
     ) -> Iterator[Mapping]:
-        for _ in range(n):
+
+        count = 0
+        while n is None or count < n:
             time.sleep(self._exposure / 1000.0)
             buf = get_buffer(self.shape(), self.dtype())
             # Try to read the mask from the core SLM device, if available.
@@ -76,7 +78,12 @@ class SimCameraDevice(CameraDevice):
             # Convert to grayscale (take one channel)
             arr = arr[..., 0].astype(np.uint8)
             buf[:] = arr.T  # Transpose to (height, width)
-            yield {"timestamp": time.time()}
+            yield {
+                "data": buf,
+                "timestamp": time.time()
+                }
+            # update count
+            count += 1
 
 
 
