@@ -84,7 +84,15 @@ class SimCameraDevice(CameraDevice):
                 }
             # update count
             count += 1
-
+# self._seq_buffer.finalize_slot(
+#                 {
+#                     **base_meta,
+#                     **cam_meta,
+#                     KW.Metadata_TimeInCore: received,
+#                     KW.Metadata_ImageNumber: str(img_number),
+#                     KW.Elapsed_Time_ms: f"{elapsed_ms:.2f}",
+#                 }
+#             )
 
 
 def test():
