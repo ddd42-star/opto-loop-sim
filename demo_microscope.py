@@ -69,19 +69,18 @@ def main() -> None:
             manager.process_events(event)
 
             # Handle button presses
-            if event.type == pygame.USEREVENT:
-                if event.user_type == pygame_gui.UI_BUTTON_PRESSED:
-                    if event.ui_element == opto_button:
-                        sim_mode = SimMode.OPTO
-                    elif event.ui_element == gray_button:
-                        sim_mode = SimMode.RANDOM_GRAY
-                    elif event.ui_element == fluoro_button:
-                        sim_mode = SimMode.RANDOM_FLUORO
-                elif event.user_type == pygame_gui.UI_DROP_DOWN_MENU_CHANGED:
-                    if event.ui_element == fluorescence_dropdown:
-                        choice = event.text
-                        mapping = {"OFF": 0, "Nucleus": 1, "Nucleus Membrane": 2, "Membrane": 3, "All": 4}
-                        fluorescence_mode = mapping[choice]
+            if event.type == pygame_gui.UI_BUTTON_PRESSED:
+                if event.ui_element == opto_button:
+                    sim_mode = SimMode.OPTO
+                elif event.ui_element == gray_button:
+                    sim_mode = SimMode.RANDOM_GRAY
+                elif event.ui_element == fluoro_button:
+                    sim_mode = SimMode.RANDOM_FLUORO
+            elif event.type == pygame_gui.UI_DROP_DOWN_MENU_CHANGED:
+                if event.ui_element == fluorescence_dropdown:
+                    choice = event.text
+                    mapping = {"OFF": 0, "Nucleus": 1, "Nucleus Membrane": 2, "Membrane": 3, "All": 4}
+                    fluorescence_mode = mapping[choice]
         manager.update(time_delta)
 
 
