@@ -37,7 +37,7 @@ class SimCameraDevice(CameraDevice):
 
     def shape(self) -> tuple[int, int]:
         # Use the simulation's dimensions
-        return (self._sim.height, self._sim.width)
+        return self._sim.height, self._sim.width
 
     def dtype(self) -> DTypeLike:
         return np.uint8
