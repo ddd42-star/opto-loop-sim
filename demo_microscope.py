@@ -3,7 +3,7 @@ import pygame_gui
 import microscope_sim as sim
 from enum import Enum, auto
 
-FPS          = 60
+FPS          = 5
 BRUSH_RADIUS = 30
 BRUSH_ALPHA  = 128
 FADE_STEP    = 50
@@ -18,7 +18,9 @@ def main() -> None:
     pygame.init()
     microscope = sim.MicroscopeSim(overlay_mask=True)  # Use the new class
     panel_width = 200
-    screen = pygame.display.set_mode((microscope.width + panel_width, microscope.height))
+    width = 512
+    height = 512
+    screen = pygame.display.set_mode((width + panel_width, height))
     pygame.display.set_caption("Microscope simulation demo")
     clock = pygame.time.Clock()
 
@@ -32,27 +34,31 @@ def main() -> None:
     # fluorescent mode: 0 = off, 1 = nucleus only,2 = nucleus membrane,  3 = membrane only, 4 = both
     fluorescence_mode = 0
     # GUI manager
-    manager = pygame_gui.UIManager((microscope.width + panel_width, microscope.height))
+    manager = pygame_gui.UIManager((width + panel_width, height))
 
     # Control buttons
-    opto_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(microscope.width + 20, 20, 160, 30),
+    opto_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(width + 20, 20, 160, 30),
                                                text="OPTO Mode", manager=manager)
-    gray_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(microscope.width + 20, 60, 160, 30),
+    gray_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(width + 20, 60, 160, 30),
                                                text="Gray Mode", manager=manager)
-    fluoro_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(microscope.width + 20, 100, 160, 30),
+    fluoro_button = pygame_gui.elements.UIButton(relative_rect=pygame.Rect(width + 20, 100, 160, 30),
                                                  text="Fluoro Mode", manager=manager)
 
     # Fluorescence selector dropdown
     fluorescence_dropdown = pygame_gui.elements.UIDropDownMenu(
         options_list=["OFF", "Nucleus", "Nucleus Membrane", "Membrane", "All"],
         starting_option="OFF",
-        relative_rect=pygame.Rect(microscope.width + 20, 160, 160, 30),
+        relative_rect=pygame.Rect(width + 20, 160, 160, 30),
         manager=manager
     )
 
+    # add camera offset
+    camera_offset = [0,0]
+    CAMERA_STEP = 30
+
     while running:
         # events
-        time_delta = clock.tick(FPS)
+        time_delta = clock.tick(FPS) / 1000
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
@@ -62,8 +68,17 @@ def main() -> None:
                  drawing = False
             elif event.type == pygame.MOUSEMOTION and drawing:
                  mask_surf.blit(brush, (event.pos[0] - BRUSH_RADIUS, event.pos[1] - BRUSH_RADIUS))
-
-
+            elif event.type == pygame.KEYDOWN:
+                print(event.type)
+                if event.key == pygame.K_LEFT:
+                    camera_offset[0] -= CAMERA_STEP
+                elif event.key == pygame.K_RIGHT:
+                    camera_offset[0] += CAMERA_STEP
+                elif event.key == pygame.K_DOWN:
+                    camera_offset[1] += CAMERA_STEP
+                elif event.key == pygame.K_UP:
+                    camera_offset[1] -= CAMERA_STEP
+  
             # Pass event to GUI
             manager.process_events(event)
 
@@ -80,6 +95,9 @@ def main() -> None:
                     choice = event.text
                     mapping = {"OFF": 0, "Nucleus": 1, "Nucleus Membrane": 2, "Membrane": 3, "All": 4}
                     fluorescence_mode = mapping[choice]
+                    
+        # Update the microscope camera offset
+        microscope.camera_offset = camera_offset            
         manager.update(time_delta)
 
 
