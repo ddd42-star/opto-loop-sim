@@ -224,14 +224,14 @@ class Cell:
                 for i, (x, y) in enumerate(pts):
                     intensity = self.membrane_fluorescence[i]
                     if intensity > 0:
-                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 6)
+                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 4)
 
             elif fluorescence_mode == 4:  # all on
                 # nucleus
                 if self.nucleus_fluorescence > 0:
                     glow_radius = int(0.55 * self.base_r)
-                    pygame.draw.circle(self._glow_surf, (0, 255, 255, 200),
-                                        (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])), glow_radius)
+                    pygame.draw.circle(self._glow_surf, (0, 255, 255, 220),
+                                        (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])), glow_radius, width=6)
                 # nucleus membrane
                 if hasattr(self, 'nucleus_membrane_fluorescence') and self.nucleus_membrane_fluorescence > 0:
                     glow_radius = int(0.5 * self.base_r)
@@ -241,7 +241,7 @@ class Cell:
                 for i, (x, y) in enumerate(pts):
                     intensity = self.membrane_fluorescence[i]
                     if intensity > 0:
-                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 6)
+                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 4)
 
             # Finally add glow layer on top
             surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
