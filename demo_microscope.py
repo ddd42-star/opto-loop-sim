@@ -16,7 +16,7 @@ class SimMode(Enum):
 
 def main() -> None:
     pygame.init()
-    microscope = sim.MicroscopeSim(overlay_mask=True, fluorescence_filter=True)  # Use the new class
+    microscope = sim.MicroscopeSim(overlay_mask=True)  # Use the new class
     panel_width = 200
     screen = pygame.display.set_mode((microscope.width + panel_width, microscope.height))
     pygame.display.set_caption("Microscope simulation demo")
@@ -31,7 +31,6 @@ def main() -> None:
     sim_mode = SimMode.OPTO
     # fluorescent mode: 0 = off, 1 = nucleus only,2 = nucleus membrane,  3 = membrane only, 4 = both
     fluorescence_mode = 0
-    #font = pygame.font.SysFont(None, 16)
     # GUI manager
     manager = pygame_gui.UIManager((microscope.width + panel_width, microscope.height))
 

@@ -54,28 +54,31 @@ class Cell:
         self.center = np.array([rng.uniform(0, width), rng.uniform(0, height)], float)
         self.nucleus_fluorescence = 0.0
         self.membrane_fluorescence = np.zeros(self.vertices)
+        self.nucleus_membrane_fluorescence = 0.0
 
     # Add nucleus membrane fluorescence update in stimulate
-    def _update_nucleus_membrane_fluorescence(self, mask: np.ndarray, fluorescence_mode: int):
-        cx, cy = int(self.center[0]), int(self.center[1])
-        radius = int(0.4 * self.base_r)
-        # Sample points around nucleus membrane circle
-        angles = np.linspace(0, 2 * math.pi, 12, endpoint=False)
-        hits = []
-        for angle in angles:
-            x = int(self.center[0] + radius * math.cos(angle))
-            y = int(self.center[1] + radius * math.sin(angle))
-            if 0 <= x < self.width and 0 <= y < self.height:
-                hits.append(mask[y, x])
-            else:
-                hits.append(False)
-        if fluorescence_mode in (1, 3) and any(hits):
-            self.nucleus_membrane_fluorescence = min(self.nucleus_membrane_fluorescence + 0.1, 1.0)
-        else:
-            self.nucleus_membrane_fluorescence = max(self.nucleus_membrane_fluorescence - 0.05, 0.0)
+    def update_nucleus_membrane_fluorescence(self, fluorescence_mode: int) -> None:
+        """
+        Update pixels to highlight the differents part of the cell
+        """
+        # Reset all fluorescence
+        self.nucleus_fluorescence = 0.0
+        self.nucleus_membrane_fluorescence = 0.0
+        self.membrane_fluorescence[:] = 0
+
+        if fluorescence_mode == 1:
+            self.nucleus_fluorescence = 1.0
+        elif fluorescence_mode == 2:
+            self.nucleus_membrane_fluorescence = 1.0
+        elif fluorescence_mode == 3:
+            self.membrane_fluorescence[:] = 1.0
+        elif fluorescence_mode == 4:
+            self.nucleus_fluorescence = 1.0
+            self.nucleus_membrane_fluorescence = 1.0
+            self.membrane_fluorescence[:] = 1.0
 
     # ---------------- stimulation ----------------
-    def stimulate(self, mask: np.ndarray):
+    def stimulate(self, mask: np.ndarray) -> None:
         """
         For every vertex that falls on a True pixel in *mask*,
         increase its radius outward.  No periodic wrapping: the
@@ -115,7 +118,7 @@ class Cell:
             self.vel += (vec / n) * self.impulse
 
     # ---------------- physics update -------------
-    def update(self, dt: float):
+    def update(self, dt: float) -> None:
         amp = self.rng.normalvariate(0, math.sqrt(2 * self.brownian_d * dt))
         ang = self.rng.uniform(0, 2 * math.pi)
         self.vel += amp * np.array([math.cos(ang), math.sin(ang)])
@@ -132,7 +135,7 @@ class Cell:
         self._conserve_area()
 
     # ---------------- collision ------------------
-    def collide(self, other):
+    def collide(self, other) -> None:
         dvx = other.center[0] - self.center[0]
         dvy = other.center[1] - self.center[1]
         dvx -= self.width * round(dvx / self.width)
@@ -154,7 +157,7 @@ class Cell:
         other.vel[:] = 0
 
     # ---------------- rendering ------------------
-    def draw(self, surf: pygame.Surface, fluorescence_mode: int):
+    def draw(self, surf: pygame.Surface, fluorescence_mode: int) -> None:
         rel = self._rel_pts()
         layers = 6
         for ox in (-self.width, 0, self.width):
@@ -219,7 +222,7 @@ class Cell:
                 # Finally add glow layer on top
                 surf.blit(glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
 
-    def draw_opto(self, surf: pygame.Surface):
+    def draw_opto(self, surf: pygame.Surface) -> None:
         rel = self._rel_pts()
         layers = 6
         for ox in (-self.width, 0, self.width):
@@ -277,8 +280,7 @@ class MicroscopeSim:
         noise_std=10,
         brightness=0.78,
         overlay_mask: bool = False,
-        rng_seed=0,
-        fluorescence_filter: bool = False  # New option to toggle fluorescence filter
+        rng_seed=0
     ):
         self.width = width
         self.height = height
@@ -298,7 +300,6 @@ class MicroscopeSim:
         self.brightness = brightness
         self.overlay_mask = overlay_mask
         self.rng = random.Random(rng_seed)
-        self.fluorescence_filter = fluorescence_filter
         self._cells: List[Cell] = [
             Cell(
                 self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
@@ -318,7 +319,7 @@ class MicroscopeSim:
         self._last_time = time.perf_counter()
         self._cell_layer = pygame.Surface((self.width, self.height))
 
-    def _microscope_filter_opto(self, surface: pygame.Surface):
+    def _microscope_filter_opto(self, surface: pygame.Surface) -> pygame.Surface:
         raw = pygame.image.tobytes(surface, "RGB")
         pil = Image.frombytes("RGB", (self.width, self.height), raw)
         pil = pil.convert("L")
@@ -406,11 +407,8 @@ class MicroscopeSim:
         frame = self._microscope_filter(self._cell_layer.copy(), fluorescence_mode)
         return frame
 
-    def get_frame_opto(self, mask, fluorescence_mode):
 
-        return self.get_frame(mask)
-
-    def get_frame_random_gray(self):
+    def get_frame_random_gray(self) -> pygame.Surface:
         now = time.perf_counter()
         dt = now - self._last_time
         self._last_time = now
@@ -427,13 +425,14 @@ class MicroscopeSim:
         # force grayscale
         return self._microscope_filter(self._cell_layer, fluorescence_mode=0)
 
-    def get_frame_random_fluoro(self, fluorescence_mode):
+    def get_frame_random_fluoro(self, fluorescence_mode) -> pygame.Surface:
         now = time.perf_counter()
         dt = now - self._last_time
         self._last_time = now
 
         for c in self._cells:
             c.update(dt)
+            c.update_nucleus_membrane_fluorescence(fluorescence_mode)
         for a, b in itertools.combinations(self._cells, 2):
             a.collide(b)
 
