@@ -2,7 +2,7 @@ from abc import ABC
 
 from pymmcore_plus.experimental.unicore import XYStageDevice
 
-class SimStageDevice(XYStageDevice, ABC):
+class SimStageDevice(XYStageDevice):
 
 
     def __init__(self):
@@ -16,6 +16,12 @@ class SimStageDevice(XYStageDevice, ABC):
         """
         self._x = 0.0
         self._y = 0.0
+
+    def stop(self) -> None:
+        """
+        Stop the movement of the stage
+        """
+        return
 
     def set_position_um(self, x: float, y: float) -> None:
         """

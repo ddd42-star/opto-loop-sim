@@ -37,7 +37,8 @@ class SimCameraDevice(CameraDevice):
 
     def shape(self) -> tuple[int, int]:
         # Use the simulation's dimensions
-        return self._sim.height, self._sim.width
+        # change it with the viewpoint
+        return self._sim.viewport_height, self._sim.viewport_width
 
     def dtype(self) -> DTypeLike:
         return np.uint8
@@ -71,9 +72,15 @@ class SimCameraDevice(CameraDevice):
                 except Exception as e:
                     print(f"Error getting SLM image: {e}")
             if mask is None:
-                mask = np.zeros((self._sim.height, self._sim.width), dtype=bool)
+                mask = np.zeros((self._sim.viewport_height, self._sim.viewport_width), dtype=bool)
             self._mask = mask
-            surf = self._sim.get_frame(self._mask) 
+            # checking the stage position
+            stage_position = self._get_current_xy_stage_position()
+            # update the stage/camera offset
+            self._sim.camera_offset = np.array([stage_position[0], stage_position[1]])
+            # For the moment use one of the function to get the microscope frame
+            surf = self._sim.get_frame(self._mask)
+            #surf = self._sim.get_frame_random_gray()
             arr = pygame.surfarray.array3d(surf)
             # Convert to grayscale (take one channel)
             arr = arr[..., 0].astype(np.uint8)
@@ -93,6 +100,21 @@ class SimCameraDevice(CameraDevice):
 #                     KW.Elapsed_Time_ms: f"{elapsed_ms:.2f}",
 #                 }
 #             )
+
+    def _get_current_xy_stage_position(self) -> tuple[float, float]:
+        """
+        Returns the current position of the virtual camera from the core
+        """
+        try:
+            stage_device = self._core.getXYStageDevice()
+            if stage_device:
+                x = self._core.getXPosition(stage_device)
+                y = self._core.getYPosition(stage_device)
+
+                return x, y
+        except Exception as e:
+            print(f"Error getting current position: {e}")
+        return 0.0, 0.0
 
 
 def test():
