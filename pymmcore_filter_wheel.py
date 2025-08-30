@@ -1,0 +1,32 @@
+from pymmcore_plus.experimental.unicore import StateDevice
+
+
+class SimFilterWheelDevice(StateDevice):
+
+    def __init__(self):
+        # add STATES for uv, blue, green, red, farred)
+        state_labels = {
+            0: "RED",
+            1: "BLUE", # excitation 405 nm, emission filter 450/500 nm
+            2: "GREEN", # excitation 488 nm, emission filter 525 nm
+            3: "UV",
+            4: "FARRED"
+        }
+        super().__init__(state_labels)
+        self._current_state = 0 # default position
+
+
+    def get_state(self) -> int:
+        """
+        Return the current state of the filter wheel
+        """
+        return self._current_state
+
+    def set_state(self, position: int) -> None:
+        """
+        Set the current state of the filter wheel
+        """
+        if position not in self._label_to_state.keys():
+            raise ValueError("Invalid position")
+
+        self._current_state = position
