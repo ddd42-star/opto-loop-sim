@@ -15,7 +15,6 @@ class SimFilterWheelDevice(StateDevice):
         super().__init__(state_labels)
         self._current_state = 0 # default position
 
-
     def get_state(self) -> int:
         """
         Return the current state of the filter wheel
@@ -26,7 +25,34 @@ class SimFilterWheelDevice(StateDevice):
         """
         Set the current state of the filter wheel
         """
-        if position not in self._label_to_state.keys():
+        if position not in self._state_to_label.keys():
             raise ValueError("Invalid position")
+        self._current_state = position
 
+
+class SimLEDDevice(StateDevice):
+
+    def __init__(self):
+        state_labels = {
+            0: "RED",
+            1: "BLUE",
+            2: "GREEN",
+            3: "UV",
+            4: "FARED"
+        }
+        super().__init__(state_labels)
+        self._current_state = 0
+
+    def get_state(self) -> int:
+        """
+        Return the current state of the LED Channel
+        """
+        return self._current_state
+
+    def set_state(self, position: int) -> None:
+        """
+        Set the current state of the LED Channel
+        """
+        if position not in self._state_to_label.keys():
+            raise ValueError("Invalid position")
         self._current_state = position
