@@ -7,6 +7,8 @@ from numpy.typing import DTypeLike
 from pymmcore_plus.experimental.unicore import CameraDevice, UniMMCore
 from microscope_sim import MicroscopeSim
 import pygame
+from pymmcore_plus.experimental.unicore import pymm_property
+from PIL import ImageEnhance
 
 class SimCameraDevice(CameraDevice):
     """
@@ -28,6 +30,7 @@ class SimCameraDevice(CameraDevice):
             print("Note: Provide core to the SimCameraDevice constructor to use SLM features")
         self._core = core
         self._mask = None
+        self._brightness = 100 # brightness level
 
     def get_exposure(self) -> float:
         return self._exposure
@@ -85,6 +88,9 @@ class SimCameraDevice(CameraDevice):
             # Convert to grayscale (take one channel)
             arr = arr[..., 0].astype(np.uint8)
             buf[:] = arr.T  # Transpose to (height, width)
+            print("image before ", buf)
+            buf = self.apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
+            print("image after ", buf)
             yield {
                 "data": buf,
                 "timestamp": time.time()
@@ -115,6 +121,42 @@ class SimCameraDevice(CameraDevice):
         except Exception as e:
             print(f"Error getting current position: {e}")
         return 0.0, 0.0
+    def apply_current_brightness(self, brightness: float, current_image: np.ndarray) -> np.ndarray:
+        """
+        Calculate the current brightness of the virtual camera.
+        """
+        print(brightness)
+        bright_img = np.add(current_image.astype(float), brightness)
+        # clip values to stay in the valid range
+        bright_img = np.clip(bright_img, 0, 255)
+
+        # Round the values and convert to uint8
+        bright_img = np.round(bright_img).astype('uint8')
+
+        return bright_img
+
+
+
+    # define property brightness
+    @pymm_property(
+        limits=(0.0,100.0),
+        sequence_max_length=1000,
+        name="brightness"
+    )
+    def brightness(self) -> float:
+        """
+        Get the brightness of the virtual camera.
+        """
+        return self._brightness
+
+    # setter methods
+    @brightness.setter
+    def brightness(self, value: float) -> None:
+        """
+        Send the values to the virtual hardware to update the brightness.
+        """
+        self._brightness = value
+
 
 
 def test():
