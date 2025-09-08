@@ -1,6 +1,9 @@
 import time
 from collections.abc import Iterator, Mapping, Sequence
 from typing import Callable
+
+from pymmcore_plus import PropertyType
+
 from pymmcore_slm_sim import SimSLMDevice
 import numpy as np
 from numpy.typing import DTypeLike
@@ -30,7 +33,7 @@ class SimCameraDevice(CameraDevice):
             print("Note: Provide core to the SimCameraDevice constructor to use SLM features")
         self._core = core
         self._mask = None
-        self._brightness = 100 # brightness level
+        self._brightness = 100.0 # brightness level
 
     def get_exposure(self) -> float:
         return self._exposure
@@ -89,7 +92,7 @@ class SimCameraDevice(CameraDevice):
             arr = arr[..., 0].astype(np.uint8)
             buf[:] = arr.T  # Transpose to (height, width)
             print("image before ", buf)
-            buf = self.apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
+            buf[:] = self._apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
             print("image after ", buf)
             yield {
                 "data": buf,
@@ -121,12 +124,12 @@ class SimCameraDevice(CameraDevice):
         except Exception as e:
             print(f"Error getting current position: {e}")
         return 0.0, 0.0
-    def apply_current_brightness(self, brightness: float, current_image: np.ndarray) -> np.ndarray:
+    def _apply_current_brightness(self, brightness: float, current_image: np.ndarray) -> np.ndarray:
         """
         Calculate the current brightness of the virtual camera.
         """
         print(brightness)
-        bright_img = np.add(current_image.astype(float), brightness)
+        bright_img = np.multiply(current_image.astype(float), brightness)
         # clip values to stay in the valid range
         bright_img = np.clip(bright_img, 0, 255)
 
@@ -140,8 +143,9 @@ class SimCameraDevice(CameraDevice):
     # define property brightness
     @pymm_property(
         limits=(0.0,100.0),
-        sequence_max_length=1000,
-        name="brightness"
+        sequence_max_length=10000,
+        name="test_brightness",
+        property_type=PropertyType.Float
     )
     def brightness(self) -> float:
         """
@@ -156,6 +160,14 @@ class SimCameraDevice(CameraDevice):
         Send the values to the virtual hardware to update the brightness.
         """
         self._brightness = value
+
+    @brightness.sequence_loader
+    def load_position_sequence(self, sequence: Sequence[float]) -> None:
+        print(f"Loading position sequence: {sequence}")
+
+    @brightness.sequence_starter
+    def start_position_sequence(self) -> None:
+        print("Starting position sequence")
 
 
 
