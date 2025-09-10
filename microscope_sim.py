@@ -400,6 +400,24 @@ class MicroscopeSim:
             
         return pygame.image.frombytes(pil.tobytes(), pil.size, "RGB")
 
+    def apply_intensity(self, surface: pygame.Surface, intensity: float, exposure: float) -> pygame.Surface:
+        """
+        Apply the intensity to the frame
+        """
+        # convert to array
+        arr = pygame.surfarray.array3d(surface)
+        mult_arr = np.multiply(arr.astype(float), intensity)
+        mult_arr = np.multiply(mult_arr.astype(float), exposure)
+        # clip values to stay in the right range
+        mult_arr = np.clip(mult_arr, 0, 255).astype(np.uint8)
+        # convert array to pygame surface
+        frame = pygame.surfarray.make_surface(mult_arr)
+
+        return frame
+
+
+
+
     def get_visible_cells(self):
         """
         Return only cells visibile in current viewport

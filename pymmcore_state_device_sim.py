@@ -13,8 +13,11 @@ class SimStateDevice(StateDevice):
         """
         return self._current_state
 
-    def set_state(self, position: int) -> None:
+    def set_state(self, position: int | str) -> None:
         """
         Set the current state of the filter wheel
         """
+        if isinstance(position, str):
+            position = int(position)
+
         self._current_state = position

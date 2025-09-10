@@ -87,13 +87,16 @@ class SimCameraDevice(CameraDevice):
             # For the moment use one of the function to get the microscope frame
             surf = self._sim.get_frame(self._mask)
             #surf = self._sim.get_frame_random_gray()
+            # apply intensity and exposure time
+            surf = self._sim.apply_intensity(surface=surf, intensity=self._brightness, exposure=self._exposure)
+            # convert to array
             arr = pygame.surfarray.array3d(surf)
             # Convert to grayscale (take one channel)
             arr = arr[..., 0].astype(np.uint8)
             buf[:] = arr.T  # Transpose to (height, width)
-            print("image before ", buf)
-            buf[:] = self._apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
-            print("image after ", buf)
+            #print("image before ", buf)
+            #buf[:] = self._apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
+            #print("image after ", buf)
             yield {
                 "data": buf,
                 "timestamp": time.time()
@@ -168,6 +171,12 @@ class SimCameraDevice(CameraDevice):
     @brightness.sequence_starter
     def start_position_sequence(self) -> None:
         print("Starting position sequence")
+
+    def get_binning(self) -> str:
+        pass
+
+    def set_binning(self, binning: str) -> None:
+        pass
 
 
 
