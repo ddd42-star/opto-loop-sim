@@ -14,7 +14,7 @@ get_frame(mask: np.ndarray) -> pygame.Surface
 """
 from __future__ import annotations
 import itertools, math, random, time
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Any
 import numpy as np
 import pygame
 from PIL import Image, ImageEnhance, ImageFilter
@@ -76,6 +76,21 @@ class Cell:
         elif fluorescence_mode == 4:
             self.nucleus_fluorescence = 1.0
             self.nucleus_membrane_fluorescence = 1.0
+            self.membrane_fluorescence[:] = 1.0
+    def update_fluorescence(self, mode: int) -> None:
+        """
+        Update fluorescence
+        """
+        # Reset fluorescence
+        self.nucleus_fluorescence = 0.0
+        self.membrane_fluorescence[:] = 0.0
+
+        if mode == 0: # no fluorescence
+            self.nucleus_fluorescence = 0.0
+            self.membrane_fluorescence[:] = 0.0
+        elif mode == 1: # nucleus fluorescence
+            self.nucleus_fluorescence = 1.0
+        elif mode == 2: # memebrane fluorescence
             self.membrane_fluorescence[:] = 1.0
 
     # ---------------- stimulation ----------------
@@ -293,6 +308,77 @@ class Cell:
                 (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])),
                 int(0.4 * self.base_r),
             )
+    def draw_cells(self, surf: pygame.Surface, mode: int, camera_offset: tuple[int,int]) -> None:
+        # Early exit if cell is outside viewport
+        viewport_x = camera_offset[0]
+        viewport_y = camera_offset[1]
+        viewport_w = 512
+        viewport_h = 512
+
+        # check if cell is roughly in viewport (with some for cell radius)
+        margin = self.base_r * 3
+        if (self.center[0] < viewport_x - margin or
+                self.center[0] > viewport_x + viewport_w + margin or
+                self.center[1] < viewport_y - margin or
+                self.center[1] > viewport_y + viewport_h + margin):
+            return  # skip drawing the cell
+
+        rel = self._rel_pts()
+        layers = 6
+
+        if np.any(camera_offset):
+            offsets = [(0, 0)]
+        else:
+            offsets = [(ox, oy) for ox in (-self.width, 0, self.width) for oy in (-self.height, 0, self.height)]
+
+        for ox, oy in offsets:
+            pts = [(x + ox + self.center[0] - camera_offset[0], y + oy + self.center[1] - camera_offset[1]) for x, y in
+                   rel]
+            if not any(0 <= px <= viewport_w and 0 <= py <= viewport_h for px, py in pts):
+                continue
+
+            # Base cell shading
+            for i in range(layers, 0, -1):
+                s = i / layers
+                shade = 80 + int(100 * s)
+                scaled = [
+                    (self.center[0] + ox - camera_offset[0] + (px - (self.center[0] + ox - camera_offset[0])) * s,
+                     self.center[1] + oy - camera_offset[1] + (py - (self.center[1] + oy - camera_offset[1])) * s)
+                    for px, py in pts
+                ]
+                pygame.draw.polygon(surf, (shade, shade, 255), scaled)
+
+            # Always draw outline
+            pygame.draw.polygon(surf, (0, 0, 0), pts, 1)
+
+            #if mask is None:
+            # temp surface
+            self._glow_surf.fill((0, 0, 0, 0))
+
+            if mode == 1:
+                if self.nucleus_fluorescence > 0:
+                    glow_radius = int(0.55 * self.base_r)
+                    pygame.draw.circle(self._glow_surf, (0, 255, 255, 200),
+                                       (int(self.center[0] + ox - camera_offset[0]),
+                                        int(self.center[1] + oy - camera_offset[1])), glow_radius, width=6)
+                # Finally add glow layer on top
+                surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+            elif mode == 2:
+                for i, (x, y) in enumerate(pts):
+                    intensity = self.membrane_fluorescence[i]
+                    if intensity > 0:
+                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 4)
+                # Finally add glow layer on top
+                surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+            elif mode == 0:
+                pygame.draw.circle(
+                    surf,
+                    (60, 60, 150),
+                    (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])),
+                    int(0.4 * self.base_r),
+                )
+
+
 
         # ---------------- helpers --------------------
     def _rel_pts(self):
@@ -355,7 +441,10 @@ class MicroscopeSim:
         self.viewport_width = 512
         self.viewport_height = 512
         self._cell_layer = pygame.Surface((self.viewport_width, self.viewport_height))# render area
-        self.camera_offset = np.array([0, 0])
+        self.camera_offset : tuple[float,float] = (0.0,0.0)
+        self.state_devices: dict[str, dict[str, str]] = {}
+        self.mode : int | None = None
+        self.n_channel: int | None = None
 
     def reset(self):
         self._cells = [
@@ -399,6 +488,18 @@ class MicroscopeSim:
             pil = pil.filter(ImageFilter.GaussianBlur(self.blur_rad))
             
         return pygame.image.frombytes(pil.tobytes(), pil.size, "RGB")
+    def _microscope_filter_new(self, surface: pygame.Surface, mode: int) -> pygame.Surface:
+        raw = pygame.image.tobytes(surface, "RGB")
+        pil = Image.frombytes("RGB", (self.viewport_width, self.viewport_height), raw)
+
+        if mode == 2:
+            pil = pil.convert("L").convert("RGB")
+
+        pil = ImageEnhance.Contrast(pil).enhance(self.contrast)
+        pil = ImageEnhance.Brightness(pil).enhance(self.brightness)
+        pil = pil.filter(ImageFilter.GaussianBlur(self.blur_rad))
+
+        return pygame.image.frombytes(pil.tobytes(), pil.size, "RGB")
 
     def apply_intensity(self, surface: pygame.Surface, intensity: float, exposure: float) -> pygame.Surface:
         """
@@ -420,7 +521,7 @@ class MicroscopeSim:
 
     def get_visible_cells(self):
         """
-        Return only cells visibile in current viewport
+        Return only cells visible in current viewport
         """
         visible_cells = []
         vx, vy = self.camera_offset
@@ -531,3 +632,73 @@ class MicroscopeSim:
             c.draw(self._cell_layer, fluorescence_mode, self.camera_offset)
         # preserve color, apply contrast/blur
         return self._microscope_filter(self._cell_layer, fluorescence_mode=fluorescence_mode)
+
+    def snap_frame(self, mask: Optional[np.ndarray], intensity: float, exposure: float) -> np.ndarray:
+        """
+        This function represents the main logic that is applied to the virtual microscope
+        """
+        now = time.perf_counter()
+        dt = now - self._last_time
+        self._last_time = now
+
+        # mask is not None -> optogenetics effects
+        if mask is not None:
+            if mask.dtype != np.bool_:
+                mask = mask.astype(bool)
+
+            if mask.any():
+                for c in self._cells:
+                    c.stimulate(mask)
+
+        # checks if is a fluorescence image or not
+        print(self.state_devices)
+        if "Filter Wheel" not in self.state_devices.keys() or "LED" not in self.state_devices.keys():
+            raise RuntimeError('Filter Wheel and LED device must be provided')
+        filter_wheel_channel_label = self.state_devices["Filter Wheel"]["label"]
+        led_channel_label = self.state_devices["LED"]["label"]
+        # checks which mode to use
+        if filter_wheel_channel_label == "mScarlet3(569/582)" and led_channel_label == "ORANGE":
+            # show nucleus
+            self.mode = 1
+            self._cell_layer.fill((0, 0, 0))
+        elif filter_wheel_channel_label == "miRFP670(642/670)" and led_channel_label == "RED":
+            # show membrane
+            self.mode = 2
+            self._cell_layer.fill((0, 0, 0))
+        else:
+            self.mode = 0
+            self._cell_layer.fill((235, 235, 235))
+        # change based on fluorescence
+        for c in self._cells:
+            c.update(dt) # shared
+            c.update_fluorescence(mode=self.mode)
+        for a, b in itertools.combinations(self._cells, 2):
+            a.collide(b) # shared
+
+        # Only update visible cells
+        visible_cells = self.get_visible_cells()
+        for c in visible_cells:
+            c.draw_cells(surf=self._cell_layer, mode=self.mode, camera_offset=self.camera_offset)
+
+        frame = self._microscope_filter_new(self._cell_layer.copy(), mode=self.mode)
+
+        # convert to array
+        arr = pygame.surfarray.array3d(frame)
+        mult_arr = np.multiply(arr.astype(float), intensity)
+        mult_arr = np.multiply(mult_arr.astype(float), exposure)
+        # clip values to stay in the right range
+        mult_arr = np.clip(mult_arr, 0, 255).astype(np.uint8)
+
+        # depending on gray or color return array
+        if self.mode == 0:
+            arr = mult_arr[...,0].astype(np.uint8)
+            print(np.shape(arr))
+            self.n_channel = len(np.shape(arr))
+            return arr.T
+        else:
+            self.n_channel = len(np.shape(mult_arr))
+            # swap witdh and height for the microscope
+            mult_arr = np.transpose(mult_arr, (1,0,2))
+            print(np.shape(mult_arr))
+
+            return mult_arr.astype(np.uint8)

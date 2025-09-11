@@ -1,6 +1,6 @@
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Callable
+from typing import Callable, Optional
 
 from pymmcore_plus import PropertyType
 
@@ -20,20 +20,28 @@ class SimCameraDevice(CameraDevice):
     A virtual camera device for pymmcore that generates images using the microscope_sim.py simulation.
     """
     _exposure: float = 10.0
-    _mask: np.ndarray | None = None
+    _brightness: float = 100.0
+    _binning: int = 2 # default 2x2
+    _mask: Optional[np.ndarray] = None
+    _led_channel: str = None
+    _filter_wheel_channel: str = None
 
     def __init__(self, core: UniMMCore | None = None, microscope_sim: MicroscopeSim | None = None) -> None:
         super().__init__()
-        if microscope_sim is not None:
-            self._sim = microscope_sim
-        else:
-            # Create a new instance of the microscope simulation with default parameters
-            self._sim = MicroscopeSim()
+        if microscope_sim is None:
+            raise RuntimeError('microscope_sim must be provided')
+        self._sim = microscope_sim
+        # if microscope_sim is not None:
+        #     self._sim = microscope_sim
+        # else:
+        #     # Create a new instance of the microscope simulation with default parameters
+        #     self._sim = MicroscopeSim() # to change
         if core is None:
             print("Note: Provide core to the SimCameraDevice constructor to use SLM features")
         self._core = core
         self._mask = None
-        self._brightness = 100.0 # brightness level
+        # change limits of binning
+        self.set_property_limits("Binning", (0, 20))
 
     def get_exposure(self) -> float:
         return self._exposure
@@ -41,15 +49,18 @@ class SimCameraDevice(CameraDevice):
     def set_exposure(self, exposure: float) -> None:
         self._exposure = exposure
 
-    def shape(self) -> tuple[int, int]:
+    def shape(self) -> tuple[int, int] | tuple[int, int, int]:
         # Use the simulation's dimensions
         # change it with the viewpoint
-        return self._sim.viewport_height, self._sim.viewport_width
+        if self._sim.n_channel == 2:
+            return self._sim.viewport_height, self._sim.viewport_width
+        else:
+            return self._sim.viewport_height, self._sim.viewport_width, self._sim.n_channel
 
     def dtype(self) -> DTypeLike:
         return np.uint8
 
-    def set_mask(self, mask: np.ndarray | None) -> None:
+    def set_mask(self, mask: Optional[np.ndarray]) -> None:
         self._mask = mask
 
     def start_sequence(
@@ -61,7 +72,6 @@ class SimCameraDevice(CameraDevice):
         count = 0
         while n is None or count < n:
             time.sleep(self._exposure / 1000.0)
-            buf = get_buffer(self.shape(), self.dtype())
             # Try to read the mask from the core SLM device, if available.
             mask = None
             if self._core is not None:
@@ -81,19 +91,24 @@ class SimCameraDevice(CameraDevice):
                 mask = np.zeros((self._sim.viewport_height, self._sim.viewport_width), dtype=bool)
             self._mask = mask
             # checking the stage position
-            stage_position = self._get_current_xy_stage_position()
+            #stage_position = self._get_current_xy_stage_position()
             # update the stage/camera offset
-            self._sim.camera_offset = np.array([stage_position[0], stage_position[1]])
+            #self._sim.camera_offset = np.array([stage_position[0], stage_position[1]])
             # For the moment use one of the function to get the microscope frame
-            surf = self._sim.get_frame(self._mask)
+            #surf = self._sim.get_frame(self._mask)
             #surf = self._sim.get_frame_random_gray()
+            surf = self._sim.snap_frame(mask, self._brightness, self._exposure)
+            # create buffer
+            buf = get_buffer(self.shape(), self.dtype())
             # apply intensity and exposure time
-            surf = self._sim.apply_intensity(surface=surf, intensity=self._brightness, exposure=self._exposure)
+            #surf = self._sim.apply_intensity(surface=surf, intensity=self._brightness, exposure=self._exposure)
             # convert to array
-            arr = pygame.surfarray.array3d(surf)
+            #arr = pygame.surfarray.array3d(surf)
             # Convert to grayscale (take one channel)
-            arr = arr[..., 0].astype(np.uint8)
-            buf[:] = arr.T  # Transpose to (height, width)
+            #arr = arr[..., 0].astype(np.uint8)
+            #buf[:] = arr.T  # Transpose to (height, width)
+            print(buf)
+            buf[:] = surf
             #print("image before ", buf)
             #buf[:] = self._apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
             #print("image after ", buf)
@@ -113,33 +128,33 @@ class SimCameraDevice(CameraDevice):
 #                 }
 #             )
 
-    def _get_current_xy_stage_position(self) -> tuple[float, float]:
-        """
-        Returns the current position of the virtual camera from the core
-        """
-        try:
-            stage_device = self._core.getXYStageDevice()
-            if stage_device:
-                x = self._core.getXPosition(stage_device)
-                y = self._core.getYPosition(stage_device)
-
-                return x, y
-        except Exception as e:
-            print(f"Error getting current position: {e}")
-        return 0.0, 0.0
-    def _apply_current_brightness(self, brightness: float, current_image: np.ndarray) -> np.ndarray:
-        """
-        Calculate the current brightness of the virtual camera.
-        """
-        print(brightness)
-        bright_img = np.multiply(current_image.astype(float), brightness)
-        # clip values to stay in the valid range
-        bright_img = np.clip(bright_img, 0, 255)
-
-        # Round the values and convert to uint8
-        bright_img = np.round(bright_img).astype('uint8')
-
-        return bright_img
+    # def _get_current_xy_stage_position(self) -> tuple[float, float]:
+    #     """
+    #     Returns the current position of the virtual camera from the core
+    #     """
+    #     try:
+    #         stage_device = self._core.getXYStageDevice()
+    #         if stage_device:
+    #             x = self._core.getXPosition(stage_device)
+    #             y = self._core.getYPosition(stage_device)
+    #
+    #             return x, y
+    #     except Exception as e:
+    #         print(f"Error getting current position: {e}")
+    #     return 0.0, 0.0
+    # def _apply_current_brightness(self, brightness: float, current_image: np.ndarray) -> np.ndarray:
+    #     """
+    #     Calculate the current brightness of the virtual camera.
+    #     """
+    #     print(brightness)
+    #     bright_img = np.multiply(current_image.astype(float), brightness)
+    #     # clip values to stay in the valid range
+    #     bright_img = np.clip(bright_img, 0, 255)
+    #
+    #     # Round the values and convert to uint8
+    #     bright_img = np.round(bright_img).astype('uint8')
+    #
+    #     return bright_img
 
 
 
@@ -147,7 +162,7 @@ class SimCameraDevice(CameraDevice):
     @pymm_property(
         limits=(0.0,100.0),
         sequence_max_length=10000,
-        name="test_brightness",
+        name="brightness",
         property_type=PropertyType.Float
     )
     def brightness(self) -> float:
@@ -172,11 +187,18 @@ class SimCameraDevice(CameraDevice):
     def start_position_sequence(self) -> None:
         print("Starting position sequence")
 
-    def get_binning(self) -> str:
-        pass
+    def get_binning(self) -> int:
+        """
+        Return the current binning of the virtual camera.
+        """
+        return self._binning
 
-    def set_binning(self, binning: str) -> None:
-        pass
+    def set_binning(self, binning: int) -> None:
+        """
+        Set the current binning of the virtual camera.
+        """
+        self._binning = binning
+
 
 
 
