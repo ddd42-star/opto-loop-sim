@@ -1,8 +1,8 @@
 import time
 from collections.abc import Iterator, Mapping, Sequence
-from typing import Callable, Optional
+from typing import Callable, Optional, Any
 
-from pymmcore_plus import PropertyType
+from pymmcore_plus import PropertyType, Keyword
 
 from pymmcore_slm_sim import SimSLMDevice
 import numpy as np
@@ -12,6 +12,7 @@ from microscope_sim import MicroscopeSim
 import pygame
 from pymmcore_plus.experimental.unicore import pymm_property
 from PIL import ImageEnhance
+from pymmcore_plus import CMMCorePlus
 
 class SimCameraDevice(CameraDevice):
     """
@@ -42,6 +43,7 @@ class SimCameraDevice(CameraDevice):
         self._mask = None
         # change limits of binning
         self.set_property_limits("Binning", (0, 20))
+        #self.set_property_sequence_max_length(Keyword.Exposure, 10)
 
     def get_exposure(self) -> float:
         return self._exposure
@@ -49,13 +51,14 @@ class SimCameraDevice(CameraDevice):
     def set_exposure(self, exposure: float) -> None:
         self._exposure = exposure
 
-    def shape(self) -> tuple[int, int] | tuple[int, int, int]:
+    def shape(self) -> tuple[int, int]:
         # Use the simulation's dimensions
         # change it with the viewpoint
-        if self._sim.n_channel == 2:
-            return self._sim.viewport_height, self._sim.viewport_width
-        else:
-            return self._sim.viewport_height, self._sim.viewport_width, self._sim.n_channel
+        # if self._sim.n_channel == 2:
+        #     return self._sim.viewport_height, self._sim.viewport_width
+        # else:
+        #     return self._sim.viewport_height, self._sim.viewport_width, self._sim.n_channel
+        return self._sim.viewport_height, self._sim.viewport_width
 
     def dtype(self) -> DTypeLike:
         return np.uint8
@@ -198,6 +201,15 @@ class SimCameraDevice(CameraDevice):
         Set the current binning of the virtual camera.
         """
         self._binning = binning
+    #
+    # def load_exposure_sequence(self, prop_name: str, sequence: Sequence[float]) -> None:
+    #     self._exposure_sequence = tuple(sequence)
+    #
+    # def start_exposure_sequence(self) -> None:
+    #     self._exposure_sequence_started = True
+    #
+    # def stop_exposure_sequence(self) -> None:
+    #     self._exposure_sequence_stopped = True
 
 
 

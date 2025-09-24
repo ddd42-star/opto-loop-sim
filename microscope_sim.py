@@ -337,40 +337,51 @@ class Cell:
             if not any(0 <= px <= viewport_w and 0 <= py <= viewport_h for px, py in pts):
                 continue
 
-            # Base cell shading
-            for i in range(layers, 0, -1):
-                s = i / layers
-                shade = 80 + int(100 * s)
-                scaled = [
-                    (self.center[0] + ox - camera_offset[0] + (px - (self.center[0] + ox - camera_offset[0])) * s,
-                     self.center[1] + oy - camera_offset[1] + (py - (self.center[1] + oy - camera_offset[1])) * s)
-                    for px, py in pts
-                ]
-                pygame.draw.polygon(surf, (shade, shade, 255), scaled)
-
-            # Always draw outline
-            pygame.draw.polygon(surf, (0, 0, 0), pts, 1)
-
-            #if mask is None:
-            # temp surface
-            self._glow_surf.fill((0, 0, 0, 0))
-
             if mode == 1:
                 if self.nucleus_fluorescence > 0:
                     glow_radius = int(0.55 * self.base_r)
-                    pygame.draw.circle(self._glow_surf, (0, 255, 255, 200),
+                    pygame.draw.circle(surf, (136, 8, 8),
                                        (int(self.center[0] + ox - camera_offset[0]),
-                                        int(self.center[1] + oy - camera_offset[1])), glow_radius, width=6)
+                                        int(self.center[1] + oy - camera_offset[1])), glow_radius)
                 # Finally add glow layer on top
-                surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+                #surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
             elif mode == 2:
-                for i, (x, y) in enumerate(pts):
-                    intensity = self.membrane_fluorescence[i]
-                    if intensity > 0:
-                        pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 4)
-                # Finally add glow layer on top
-                surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+                # self._glow_surf.fill((0, 0, 0, 0))
+                # for i, (x, y) in enumerate(pts):
+                #     intensity = self.membrane_fluorescence[i]
+                #     if intensity > 0:
+                #         pygame.draw.circle(self._glow_surf, (255, 165, 0, 220), (int(x), int(y)), 4)
+                # # Finally add glow layer on top
+                # surf.blit(self._glow_surf, (0, 0), special_flags=pygame.BLEND_ADD)
+                # Membrane channel: fill cell with membrane color, nucleus area with dark red
+                membrane_color = (136, 8, 8)  # Blood Red
+                #nucleus_color = (120, 0, 0)  # Dark red
+
+                # Fill the whole cell
+                pygame.draw.polygon(surf, membrane_color, pts)
+
+                # Draw dark red nucleus in the center
+                # nucleus_radius = int(0.55 * self.base_r)
+                # pygame.draw.circle(
+                #     surf,
+                #     nucleus_color,
+                #     (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])),
+                #     nucleus_radius,
+                # )
             elif mode == 0:
+                # Base cell shading
+                for i in range(layers, 0, -1):
+                    s = i / layers
+                    shade = 80 + int(100 * s)
+                    scaled = [
+                        (self.center[0] + ox - camera_offset[0] + (px - (self.center[0] + ox - camera_offset[0])) * s,
+                         self.center[1] + oy - camera_offset[1] + (py - (self.center[1] + oy - camera_offset[1])) * s)
+                        for px, py in pts
+                    ]
+                    pygame.draw.polygon(surf, (shade, shade, 255), scaled)
+
+                # Always draw outline
+                pygame.draw.polygon(surf, (0, 0, 0), pts, 1)
                 pygame.draw.circle(
                     surf,
                     (60, 60, 150),
@@ -660,11 +671,11 @@ class MicroscopeSim:
         if filter_wheel_channel_label == "mScarlet3(569/582)" and led_channel_label == "ORANGE":
             # show nucleus
             self.mode = 1
-            self._cell_layer.fill((0, 0, 0))
+            self._cell_layer.fill((235, 235, 235))
         elif filter_wheel_channel_label == "miRFP670(642/670)" and led_channel_label == "RED":
             # show membrane
             self.mode = 2
-            self._cell_layer.fill((0, 0, 0))
+            self._cell_layer.fill((235, 235, 235))
         else:
             self.mode = 0
             self._cell_layer.fill((235, 235, 235))
@@ -690,15 +701,17 @@ class MicroscopeSim:
         mult_arr = np.clip(mult_arr, 0, 255).astype(np.uint8)
 
         # depending on gray or color return array
-        if self.mode == 0:
-            arr = mult_arr[...,0].astype(np.uint8)
-            print(np.shape(arr))
-            self.n_channel = len(np.shape(arr))
-            return arr.T
-        else:
-            self.n_channel = len(np.shape(mult_arr))
-            # swap witdh and height for the microscope
-            mult_arr = np.transpose(mult_arr, (1,0,2))
-            print(np.shape(mult_arr))
-
-            return mult_arr.astype(np.uint8)
+        # if self.mode == 0:
+        #     arr = mult_arr[...,0].astype(np.uint8)
+        #     print(np.shape(arr))
+        #     self.n_channel = len(np.shape(arr))
+        #     return arr.T
+        # else:
+        #     self.n_channel = len(np.shape(mult_arr))
+        #     # swap witdh and height for the microscope
+        #     mult_arr = np.transpose(mult_arr, (1,0,2))
+        #     print(np.shape(mult_arr))
+        #
+        #     return mult_arr.astype(np.uint8)
+        arr = mult_arr[..., 0].astype(np.uint8)
+        return arr.T

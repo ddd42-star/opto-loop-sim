@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Microscope LLM Workflow Schema",
+  "type": "object",
+  "oneOf": [
+    { "$ref": "#/definitions/StructuredRequest" },
+    { "$ref": "#/definitions/PlannerOutput" },
+    { "$ref": "#/definitions/CodeGeneratorOutput" },
+    { "$ref": "#/definitions/ExecutorResult" },
+    { "$ref": "#/definitions/SummarizerOutput" }
+  ],
+
+  "definitions": {
+    "StructuredRequest": {
+      "type": "object",
+      "required": ["intent", "parameters", "explanation"],
+      "properties": {
+        "intent": { "type": "string", "enum": ["move_stage", "capture_image", "set_light", "analyze_image"] },
+        "parameters": { "type": "object" },
+        "explanation": { "type": "string" }
+      }
+    },
+
+    "PlannerOutput": {
+      "type": "object",
+      "required": ["steps"],
+      "properties": {
+        "steps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action", "params"],
+            "properties": {
+              "action": { "type": "string", "enum": ["move_stage", "capture_image", "set_light", "analyze_image"] },
+              "params": { "type": "object" }
+            }
+          }
+        }
+      }
+    },
+
+    "CodeGeneratorOutput": {
+      "type": "object",
+      "required": ["code", "language", "actions_mapped"],
+      "properties": {
+        "code": { "type": "string" },
+        "language": { "type": "string", "enum": ["python"] },
+        "actions_mapped": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["action", "status"],
+            "properties": {
+              "action": { "type": "string" },
+              "status": { "type": "string", "enum": ["mapped", "unmapped"] }
+            }
+          }
+        }
+      }
+    },
+
+    "ExecutorResult": {
+      "type": "object",
+      "required": ["status", "executed_code", "outputs", "errors"],
+      "properties": {
+        "status": { "type": "string", "enum": ["success", "failure"] },
+        "executed_code": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "outputs": {
+          "type": "object",
+          "properties": {
+            "images": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "metadata": { "type": "object" }
+          }
+        },
+        "errors": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+
+    "SummarizerOutput": {
+      "type": "object",
+      "required": ["summary", "status"],
+      "properties": {
+        "summary": { "type": "string" },
+        "links": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "status": { "type": "string", "enum": ["success", "failure"] }
+      }
+    }
+  }
+}
