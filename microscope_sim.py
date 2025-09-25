@@ -34,7 +34,7 @@ def polygon_area(pts) -> float:
 # Cell                                                                        #
 # --------------------------------------------------------------------------- #
 class Cell:
-    def __init__(self, width, height, base_radius, vertices, friction, brownian_d, curvature_relax, radial_relax, protrusion_gain, impulse, ruffle_std, rng):
+    def __init__(self, width, height, base_radius, vertices, friction, brownian_d, curvature_relax, radial_relax, protrusion_gain, impulse, ruffle_std, rng, z_position):
         self.width = width
         self.height = height
         self.base_r = base_radius * (0.85 + 0.3 * rng.random())
@@ -56,6 +56,8 @@ class Cell:
         self.membrane_fluorescence = np.zeros(self.vertices)
         self.nucleus_membrane_fluorescence = 0.0
         self._glow_surf = pygame.Surface((512, 512), pygame.SRCALPHA)
+        self.z_position: float = z_position
+        #self.z_velocity: float = 0.0
 
     # Add nucleus membrane fluorescence update in stimulate
     def update_nucleus_membrane_fluorescence(self, fluorescence_mode: int) -> None:
@@ -389,6 +391,78 @@ class Cell:
                     int(0.4 * self.base_r),
                 )
 
+        # Add this method to the Cell class
+    def draw_cells_scaled(self, surf: pygame.Surface, mode: int, camera_offset: tuple[int, int],
+                              scale_factor: float = 1.0) -> None:
+            """
+            Draw cell with optional scaling factor for focus effects
+            """
+            # Early exit if cell is outside viewport
+            viewport_x = camera_offset[0]
+            viewport_y = camera_offset[1]
+            viewport_w = surf.get_width()
+            viewport_h = surf.get_height()
+
+            # check if cell is roughly in viewport (with some margin for cell radius)
+            margin = self.base_r * 3 * scale_factor
+            if (self.center[0] < viewport_x - margin or
+                    self.center[0] > viewport_x + viewport_w + margin or
+                    self.center[1] < viewport_y - margin or
+                    self.center[1] > viewport_y + viewport_h + margin):
+                return  # skip drawing the cell
+
+            # Scale the relative points
+            rel = self._rel_pts_scaled(scale_factor)
+            layers = 6
+
+            if np.any(camera_offset):
+                offsets = [(0, 0)]
+            else:
+                offsets = [(ox, oy) for ox in (-self.width, 0, self.width) for oy in (-self.height, 0, self.height)]
+
+            for ox, oy in offsets:
+                pts = [(x + ox + self.center[0] - camera_offset[0], y + oy + self.center[1] - camera_offset[1]) for x, y
+                       in rel]
+                if not any(0 <= px <= viewport_w and 0 <= py <= viewport_h for px, py in pts):
+                    continue
+
+                if mode == 1:
+                    if self.nucleus_fluorescence > 0:
+                        glow_radius = int(0.55 * self.base_r * scale_factor)
+                        pygame.draw.circle(surf, (136, 8, 8),
+                                           (int(self.center[0] + ox - camera_offset[0]),
+                                            int(self.center[1] + oy - camera_offset[1])), glow_radius)
+                elif mode == 2:
+                    membrane_color = (136, 8, 8)  # Blood Red
+                    pygame.draw.polygon(surf, membrane_color, pts)
+                elif mode == 0:
+                    # Base cell shading
+                    for i in range(layers, 0, -1):
+                        s = i / layers
+                        shade = 80 + int(100 * s)
+                        scaled = [
+                            (self.center[0] + ox - camera_offset[0] + (
+                                        px - (self.center[0] + ox - camera_offset[0])) * s,
+                             self.center[1] + oy - camera_offset[1] + (
+                                         py - (self.center[1] + oy - camera_offset[1])) * s)
+                            for px, py in pts
+                        ]
+                        pygame.draw.polygon(surf, (shade, shade, 255), scaled)
+
+                    # Always draw outline
+                    pygame.draw.polygon(surf, (0, 0, 0), pts, 1)
+                    pygame.draw.circle(
+                        surf,
+                        (60, 60, 150),
+                        (int(self.center[0] + ox - camera_offset[0]), int(self.center[1] + oy - camera_offset[1])),
+                        int(0.4 * self.base_r * scale_factor),
+                    )
+
+    def _rel_pts_scaled(self, scale_factor: float = 1.0):
+        """Get relative points with optional scaling"""
+        scaled_r = self.r * scale_factor
+        return list(zip(np.cos(self.angles) * scaled_r, np.sin(self.angles) * scaled_r))
+
 
 
         # ---------------- helpers --------------------
@@ -422,7 +496,10 @@ class MicroscopeSim:
         noise_std=10,
         brightness=0.78,
         overlay_mask: bool = False,
-        rng_seed=0
+        rng_seed=0,
+        focal_plane=0.0,
+        depth_of_field=50.0,
+        z_range=500.0
     ):
         self.width = width
         self.height = height
@@ -442,12 +519,6 @@ class MicroscopeSim:
         self.brightness = brightness
         self.overlay_mask = overlay_mask
         self.rng = random.Random(rng_seed)
-        self._cells: List[Cell] = [
-            Cell(
-                self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
-                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng
-            ) for _ in range(self.nb_cells)
-        ]
         self._last_time = time.perf_counter()
         self.viewport_width = 512
         self.viewport_height = 512
@@ -456,12 +527,23 @@ class MicroscopeSim:
         self.state_devices: dict[str, dict[str, str]] = {}
         self.mode : int | None = None
         self.n_channel: int | None = None
+        self.focal_plane=focal_plane
+        self.depth_of_field=depth_of_field
+        self.z_range=z_range
+        self._cells: List[Cell] = [
+            Cell(
+                self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
+                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng,
+                z_position=0
+            ) for _ in range(self.nb_cells)
+        ]
 
     def reset(self):
         self._cells = [
             Cell(
                 self.width, self.height, self.base_radius, self.vertices, self.friction, self.brownian_d,
-                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng
+                self.curvature_relax, self.radial_relax, self.protrusion_gain, self.impulse, self.ruffle_std, self.rng,
+                z_position=0
             ) for _ in range(self.nb_cells)
         ]
         self._last_time = time.perf_counter()
@@ -527,8 +609,98 @@ class MicroscopeSim:
 
         return frame
 
+    def _calculate_focus_factor(self, cell_z: float) -> tuple[float, float, float]:
+        """
+        Calculate opacity, blur factor, and size factor based on distance from focal plane
+        Returns: (opacity_factor, blur_factor, size_factor)
+        """
+        z_distance = abs(cell_z - self.focal_plane)
 
+        # Objects further from focal plane become dimmer and more blurred
+        opacity_factor = max(0.1, 1.0 - (z_distance / self.depth_of_field))
+        blur_factor = 1.0 + (z_distance / (self.depth_of_field * 0.5))
 
+        # Add size factor - cells appear larger when in focus, smaller when out of focus
+        # This simulates the optical magnification effect of focusing
+        if z_distance < self.depth_of_field * 0.5:
+            # In focus - normal to slightly larger size
+            size_factor = 1.0 + 0.5 * (1.0 - z_distance / (self.depth_of_field * 0.5))
+        else:
+            # Out of focus - progressively smaller
+            size_factor = max(0.3, 1.0 - 0.7 * (z_distance - self.depth_of_field * 0.5) / self.depth_of_field)
+
+        return opacity_factor, blur_factor, size_factor
+
+    def _render_cell_with_focus(self, cell: Cell, surf: pygame.Surface, mode: int,
+                                camera_offset: tuple[float, float]) -> None:
+        """
+        Render cell with focus effects, including size scaling, blur approximation,
+        and fluorescence glow. Optimized for pygame rendering.
+        """
+        opacity_factor, blur_factor, size_factor = self._calculate_focus_factor(cell.z_position)
+
+        # Skip cells too far out of focus
+        if opacity_factor < 0.05:
+            return
+
+        # Temporary surface for the cell
+        temp_size = int(self.viewport_width * 1.1)  # slightly larger for scaling
+        temp_surf = pygame.Surface((temp_size, temp_size), pygame.SRCALPHA)
+
+        # Offset for temporary surface
+        scale_offset_x = camera_offset[0] - (temp_size - self.viewport_width) // 2
+        scale_offset_y = camera_offset[1] - (temp_size - self.viewport_height) // 2
+
+        # Temporarily scale cell radius
+        original_base_r = cell.base_r
+        original_r = cell.r.copy()
+        cell.base_r *= size_factor
+        cell.r *= size_factor
+
+        # Draw cell on temp surface
+        cell.draw_cells_scaled(temp_surf, mode, (scale_offset_x, scale_offset_y), scale_factor=size_factor)
+
+        # Restore original size
+        cell.base_r = original_base_r
+        cell.r = original_r
+
+        # Apply opacity
+        temp_surf.set_alpha(int(255 * opacity_factor))
+
+        # Approximate blur with additive offset copies
+        blur_radius = max(1, int((blur_factor - 1.0) * 3))
+        for dx in range(-blur_radius, blur_radius + 1):
+            for dy in range(-blur_radius, blur_radius + 1):
+                if dx == 0 and dy == 0:
+                    continue
+                offset_surf = temp_surf.copy()
+                offset_surf.set_alpha(int(255 * opacity_factor / ((blur_radius * 2) + 1)))
+                surf.blit(offset_surf,
+                          (-((temp_size - self.viewport_width) // 2) + dx,
+                           -((temp_size - self.viewport_height) // 2) + dy),
+                          special_flags=pygame.BLEND_ADD)
+
+        # Draw main cell on top
+        surf.blit(temp_surf, (-((temp_size - self.viewport_width) // 2),
+                              -((temp_size - self.viewport_height) // 2)))
+
+    def set_focal_plane(self, z_position: float) -> None:
+        """
+        Set the focal plane Z position (simulates Z-stage movement)
+        """
+        self.focal_plane = z_position
+
+    def move_focus_relative(self, delta_z: float) -> None:
+        """
+        Move focal plane by relative amount
+        """
+        self.set_focal_plane(self.focal_plane + delta_z)
+
+    def get_focal_plane(self) -> float:
+        """
+        Get current focal plane position
+        """
+        return self.focal_plane
 
     def get_visible_cells(self):
         """
@@ -671,25 +843,31 @@ class MicroscopeSim:
         if filter_wheel_channel_label == "mScarlet3(569/582)" and led_channel_label == "ORANGE":
             # show nucleus
             self.mode = 1
-            self._cell_layer.fill((235, 235, 235))
         elif filter_wheel_channel_label == "miRFP670(642/670)" and led_channel_label == "RED":
             # show membrane
             self.mode = 2
-            self._cell_layer.fill((235, 235, 235))
         else:
             self.mode = 0
-            self._cell_layer.fill((235, 235, 235))
+
+
+        # Scale movement for smoother animation
+        xy_speed_scale = 0.3
+        z_speed_scale = 0.2
         # change based on fluorescence
         for c in self._cells:
-            c.update(dt) # shared
+            c.update(dt * xy_speed_scale) # shared
+            #c.z_position += c.z_velocity * dt * z_speed_scale
+            c._z_position = 0.0
             c.update_fluorescence(mode=self.mode)
         for a, b in itertools.combinations(self._cells, 2):
             a.collide(b) # shared
 
+        self._cell_layer.fill((235, 235, 235))
+
         # Only update visible cells
         visible_cells = self.get_visible_cells()
         for c in visible_cells:
-            c.draw_cells(surf=self._cell_layer, mode=self.mode, camera_offset=self.camera_offset)
+            self._render_cell_with_focus(c,self._cell_layer,self.mode, self.camera_offset)
 
         frame = self._microscope_filter_new(self._cell_layer.copy(), mode=self.mode)
 
@@ -700,18 +878,5 @@ class MicroscopeSim:
         # clip values to stay in the right range
         mult_arr = np.clip(mult_arr, 0, 255).astype(np.uint8)
 
-        # depending on gray or color return array
-        # if self.mode == 0:
-        #     arr = mult_arr[...,0].astype(np.uint8)
-        #     print(np.shape(arr))
-        #     self.n_channel = len(np.shape(arr))
-        #     return arr.T
-        # else:
-        #     self.n_channel = len(np.shape(mult_arr))
-        #     # swap witdh and height for the microscope
-        #     mult_arr = np.transpose(mult_arr, (1,0,2))
-        #     print(np.shape(mult_arr))
-        #
-        #     return mult_arr.astype(np.uint8)
         arr = mult_arr[..., 0].astype(np.uint8)
         return arr.T

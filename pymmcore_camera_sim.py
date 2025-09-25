@@ -74,7 +74,7 @@ class SimCameraDevice(CameraDevice):
 
         count = 0
         while n is None or count < n:
-            time.sleep(self._exposure / 1000.0)
+            time.sleep(self._exposure / 100.0)
             # Try to read the mask from the core SLM device, if available.
             mask = None
             if self._core is not None:
@@ -110,7 +110,6 @@ class SimCameraDevice(CameraDevice):
             # Convert to grayscale (take one channel)
             #arr = arr[..., 0].astype(np.uint8)
             #buf[:] = arr.T  # Transpose to (height, width)
-            print(buf)
             buf[:] = surf
             #print("image before ", buf)
             #buf[:] = self._apply_current_brightness(brightness=self._brightness, current_image=buf) ## apply current values of brightness
@@ -164,7 +163,7 @@ class SimCameraDevice(CameraDevice):
     # define property brightness
     @pymm_property(
         limits=(0.0,100.0),
-        sequence_max_length=10000,
+        sequence_max_length=100,
         name="brightness",
         property_type=PropertyType.Float
     )
