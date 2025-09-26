@@ -120,6 +120,15 @@ class SimCameraDevice(CameraDevice):
                 }
             # update count
             count += 1
+
+    def getNumberOfChannels(self) -> int:
+        """ Returns the number of channels of the camera.
+        Since this is a virtual camera, the number of channels
+        is dependent on the purpose of the virtual camera to develop.
+
+        In this example our camera will have 1 channel
+        """
+        return 1
 # self._seq_buffer.finalize_slot(
 #                 {
 #                     **base_meta,

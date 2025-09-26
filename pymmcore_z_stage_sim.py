@@ -11,7 +11,7 @@ class SimZStageDevice(StageDevice):
         self._z_current = 0.0
         self._z_old = 0.0
         self._z_origin = 0.0 # see later
-        self._direction = 0 # allowed values (-1,0,1)
+        self._direction = 0
         self._microscope_sim = microscope_sim
 
     def home(self) -> None:
